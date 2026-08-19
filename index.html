@@ -128,6 +128,11 @@
   .grid figure:hover{transform:translateY(-3px) scale(1.03)}
   .grid figure.fav{box-shadow:0 0 0 2.5px var(--gold),0 6px 18px rgba(255,181,36,.28)}
   .grid img{max-width:100%;max-height:100%;border-radius:10px}
+  .ph{
+    font-size:11.5px;font-weight:700;color:var(--muted);text-align:center;padding:8px;
+    line-height:1.4;animation:phpulse 1.6s ease-in-out infinite;
+  }
+  @keyframes phpulse{0%,100%{opacity:.45}50%{opacity:.8}}
   .tilebtn{
     position:absolute;opacity:0;background:rgba(61,51,80,.86);color:#fff;border:none;
     border-radius:999px;font-size:11px;font-weight:800;padding:5px 9px;box-shadow:none;
@@ -413,9 +418,51 @@ function syncTile(fig,g){
   const s=fig.querySelector(".tilebtn.star");
   if(s){ s.textContent=fav?"★":"☆"; s.classList.toggle("on",fav); }
 }
+// Only tiles near the viewport hold a real <img>. With ~160 animated gifs,
+// mounting them all at once costs a burst of requests and keeps every frame
+// decoding forever; this loads on approach and unloads once well out of view.
+const tileGif=new WeakMap();
+let tileObs=null;
+function makePh(g){
+  const p=document.createElement("span");
+  p.className="ph"; p.textContent=g.label;
+  return p;
+}
+function mountTile(fig){
+  if(fig.dataset.mounted==="1") return;
+  const g=tileGif.get(fig);
+  if(!g) return;
+  fig.dataset.mounted="1";
+  const token=fig._tok=(fig._tok||0)+1;
+  loadImage(g,
+    im=>{ if(fig._tok!==token) return;
+          im.loading="lazy";
+          const ph=fig.querySelector(".ph"); if(ph) ph.remove();
+          fig.prepend(im); },
+    ()=>{ /* every mirror failed — the label placeholder stays put */ });
+}
+function unmountTile(fig){
+  if(fig.dataset.mounted!=="1") return;
+  const g=tileGif.get(fig);
+  fig.dataset.mounted="0";
+  fig._tok=(fig._tok||0)+1;               // orphans an in-flight load
+  const im=fig.querySelector("img");
+  if(im){ im.onload=im.onerror=null; im.remove(); }
+  if(g && !fig.querySelector(".ph")) fig.prepend(makePh(g));
+}
+function observer(){
+  if(tileObs) return tileObs;
+  if(!window.IntersectionObserver) return null;
+  tileObs=new IntersectionObserver(entries=>{
+    entries.forEach(en=>{ en.isIntersecting?mountTile(en.target):unmountTile(en.target); });
+  },{rootMargin:"700px 0px",threshold:0});
+  return tileObs;
+}
+
 function renderGallery(){
   const list=pool();
   if(filter==="fav") list.sort((a,b)=>store.copies(b.id)-store.copies(a.id));
+  if(tileObs) tileObs.disconnect();
   gallery.replaceChildren();
   if(!list.length){
     const p=document.createElement("p");
@@ -431,11 +478,8 @@ function renderGallery(){
     fig.dataset.id=g.id;
     fig.title=g.label+" — "+g.category;
     fig.onclick=()=>{ show(g); copyGif(g); };
-    loadImage(g,
-      im=>{ im.loading="lazy"; fig.prepend(im); },
-      ()=>{ const s=document.createElement("span");
-            s.style.cssText="font-size:11.5px;font-weight:700;color:var(--muted);text-align:center";
-            s.textContent=g.label; fig.prepend(s); });
+    fig.prepend(makePh(g));
+    tileGif.set(fig,g);
     const star=document.createElement("button");
     star.className="tilebtn star";
     star.onclick=e=>{ e.stopPropagation(); toggleFav(g); };
@@ -446,6 +490,9 @@ function renderGallery(){
     syncTile(fig,g);
     gallery.appendChild(fig);
   });
+  const io=observer();
+  if(io) Array.from(gallery.children).forEach(fig=>{ if(fig.tagName==="FIGURE") io.observe(fig); });
+  else Array.from(gallery.children).forEach(fig=>{ if(fig.tagName==="FIGURE") mountTile(fig); });
 }
 
 // ---------- controls ----------
