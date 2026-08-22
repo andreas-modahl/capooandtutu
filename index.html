@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Capoo &amp; Tutu — GIF Board</title>
-<link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="icon" href="icon-512.png" sizes="512x512" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="site.webmanifest">
 <meta name="apple-mobile-web-app-title" content="Tutu">
@@ -230,7 +230,14 @@ const CATS = [
   {k:"sleepy",   icon:"😴", name:"Sleepy"}
 ];
 
-const GIFS = RAW.map(g=>{
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  return a;
+}
+
+// Shuffled once per load, so the grid opens on a different mix every visit but
+// stays put while you flip between chips and searches.
+const GIFS = shuffle(RAW.map(g=>{
   const [id,name]=g.p.split("/");
   const t=id.slice(0,-1);
   return {
@@ -246,7 +253,7 @@ const GIFS = RAW.map(g=>{
       "https://media.tenor.com/"+t+"j/"+name+".gif"
     ]
   };
-});
+}));
 
 // ---------- persistence (degrades to memory if storage is unavailable) ----------
 const store=(()=>{
@@ -365,8 +372,7 @@ function show(g){
 }
 function next(){
   if(!bag.length){
-    bag=pool();
-    for(let i=bag.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[bag[i],bag[j]]=[bag[j],bag[i]];}
+    bag=shuffle(pool());
     if(current&&bag.length>1&&bag[bag.length-1]===current) bag.unshift(bag.pop());
   }
   if(!bag.length){ frame.replaceChildren(); label.textContent="nothing matches that filter"; catEl.textContent=""; copiesEl.textContent=""; return; }
